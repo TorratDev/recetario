@@ -1,0 +1,74 @@
+{{range .}}
+<div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
+    <div class="aspect-w-16 aspect-h-9 bg-gray-200">
+        {{if .ImageURL}}
+        <img src="{{.ImageURL}}" alt="{{.Title}}" class="w-full h-48 object-cover">
+        {{else}}
+        <div class="w-full h-48 bg-gray-200 flex items-center justify-center">
+            <i class="fas fa-utensils text-4xl text-gray-400"></i>
+        </div>
+        {{end}}
+    </div>
+    
+    <div class="p-4">
+        <div class="flex justify-between items-start mb-2">
+            <h3 class="text-lg font-semibold text-gray-900 truncate flex-1">{{.Title}}</h3>
+            {{if .Difficulty}}
+            <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                {{if eq .Difficulty "easy"}}bg-green-100 text-green-800
+                {{else if eq .Difficulty "medium"}}bg-yellow-100 text-yellow-800
+                {{else}}bg-red-100 text-red-800{{end}}">
+                {{.Difficulty}}
+            </span>
+            {{end}}
+        </div>
+        
+        {{if .Description}}
+        <p class="text-gray-600 text-sm mb-3 line-clamp-2">{{.Description}}</p>
+        {{end}}
+        
+        <div class="flex items-center justify-between text-sm text-gray-500 mb-3">
+            {{if .PrepTime}}
+            <span class="flex items-center">
+                <i class="fas fa-clock mr-1"></i>{{.PrepTime}} min
+            </span>
+            {{end}}
+            {{if .Servings}}
+            <span class="flex items-center">
+                <i class="fas fa-users mr-1"></i>{{.Servings}} servings
+            </span>
+            {{end}}
+        </div>
+        
+        {{if .Tags}}
+        <div class="flex gap-1 flex-wrap mb-3">
+            {{range .Tags}}
+            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium" 
+                  style="background-color: {{.Color}}20; color: {{.Color}}">
+                {{.Name}}
+            </span>
+            {{end}}
+        </div>
+        {{end}}
+        
+        <div class="flex gap-2">
+            <a href="/recipes/{{.ID}}" 
+               class="flex-1 text-center bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 text-sm">
+                <i class="fas fa-eye mr-1"></i>View
+            </a>
+            <button class="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 text-sm">
+                <i class="fas fa-edit"></i>
+            </button>
+            <button class="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 text-sm">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{{else}}
+<div class="col-span-full text-center py-12">
+    <i class="fas fa-search text-6xl text-gray-300 mb-4"></i>
+    <h3 class="text-xl font-semibold text-gray-600 mb-2">No recipes found</h3>
+    <p class="text-gray-500">Try adjusting your search or filters</p>
+</div>
+{{end}}
