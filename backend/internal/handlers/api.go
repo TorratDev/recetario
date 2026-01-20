@@ -6,11 +6,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	appmiddleware "recipe-app/internal/appmiddleware"
 	"recipe-app/internal/logger"
 	"recipe-app/internal/models"
 	"recipe-app/internal/validation"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type APIHandler struct {
