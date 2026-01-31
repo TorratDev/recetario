@@ -1,0 +1,99 @@
+{{define "content"}}
+<div class="max-w-4xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-900">Create New Recipe</h1>
+        <a href="/recipes" class="text-gray-600 hover:text-gray-800">← Back to Recipes</a>
+    </div>
+    
+    <form hx-post="/api/recipes" hx-encoding="json" hx-target="#form-message" hx-swap="innerHTML">
+        <div id="form-message" class="mb-4"></div>
+        
+        <!-- Basic Information -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4">Basic Information</h2>
+            
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="title">Recipe Title</label>
+                <input type="text" id="title" name="title" required 
+                       class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="description">Description</label>
+                <textarea id="description" name="description" rows="3" required
+                          class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-4">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="prep_time">Prep Time (min)</label>
+                    <input type="number" id="prep_time" name="prep_time" min="0" required
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="cook_time">Cook Time (min)</label>
+                    <input type="number" id="cook_time" name="cook_time" min="0" required
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="servings">Servings</label>
+                    <input type="number" id="servings" name="servings" min="1" required
+                           class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="difficulty">Difficulty</label>
+                <select id="difficulty" name="difficulty" required
+                        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    <option value="">Select Difficulty</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Ingredients -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4">Ingredients</h2>
+            <div id="ingredients-list">
+                <div class="ingredient-item grid md:grid-cols-4 gap-4 mb-4">
+                    <input type="text" name="ingredients[0].name" placeholder="Ingredient name" required
+                           class="px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    <input type="text" name="ingredients[0].quantity" placeholder="Quantity" required
+                           class="px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    <input type="text" name="ingredients[0].unit" placeholder="Unit" required
+                           class="px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                    <button type="button" onclick="removeIngredient(this)" class="bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600">Remove</button>
+                </div>
+            </div>
+            <button type="button" onclick="addIngredient()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">+ Add Ingredient</button>
+        </div>
+        
+        <!-- Instructions -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4">Instructions</h2>
+            <div id="instructions-list">
+                <div class="instruction-item mb-4">
+                    <div class="flex gap-4">
+                        <span class="font-semibold">1.</span>
+                        <textarea name="instructions[0]" placeholder="Step 1" rows="2" required
+                                  class="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500"></textarea>
+                        <button type="button" onclick="removeInstruction(this)" class="bg-red-500 text-white px-3 py-2 rounded hover:bg-red-600">Remove</button>
+                    </div>
+                </div>
+            </div>
+            <button type="button" onclick="addInstruction()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">+ Add Step</button>
+        </div>
+        
+        <!-- Submit Buttons -->
+        <div class="flex justify-end gap-4">
+            <a href="/recipes" class="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition">Cancel</a>
+            <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">Create Recipe</button>
+        </div>
+    </form>
+</div>
+{{end}}

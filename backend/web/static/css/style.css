@@ -1,0 +1,59 @@
+/* Custom styles for RecipeApp */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 500ms ease-in-out;
+}
+
+.htmx-request .htmx-indicator {
+    opacity: 1;
+}
+
+.fade-me-in.htmx-swapping {
+    opacity: 0;
+}
+
+.fade-me-in {
+    opacity: 1;
+    transition: opacity 500ms ease-in-out;
+}
+
+/* Loading spinner */
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #3b82f6;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Form validation styles */
+input:invalid, textarea:invalid, select:invalid {
+    border-color: #ef4444;
+}
+
+input:valid, textarea:valid, select:valid {
+    border-color: #10b981;
+}
+
+/* Mobile menu styles */
+.mobile-menu {
+    transform: translateX(-100%);
+    transition: transform 300ms ease-in-out;
+}
+
+.mobile-menu.active {
+    transform: translateX(0);
+}

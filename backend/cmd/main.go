@@ -55,7 +55,12 @@ func main() {
 	r.Route("/recipes", func(r chi.Router) {
 		r.Get("/", handlers.NewWebHandler().HandleRecipes)
 		r.With(authService.AuthMiddleware).Get("/new", handlers.NewWebHandler().HandleNewRecipe)
+		r.Get("/{id}", handlers.NewWebHandler().HandleRecipeDetail)
 	})
+
+	// Serve static files
+	fileServer := http.FileServer(http.Dir("web/static/"))
+	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 
 	log.Info("Server starting on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {

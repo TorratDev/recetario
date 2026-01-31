@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="text-center py-16">
+    <h1 class="text-4xl font-bold text-gray-900 mb-4">Welcome to RecipeApp 🍲</h1>
+    <p class="text-xl text-gray-600 mb-8">Discover, create, and share amazing recipes</p>
+    
+    <div class="grid md:grid-cols-3 gap-8 mt-16">
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="text-3xl mb-4">📖</div>
+            <h3 class="text-xl font-semibold mb-2">Browse Recipes</h3>
+            <p class="text-gray-600">Explore our collection of delicious recipes from around the world</p>
+            <a href="/recipes" class="inline-block mt-4 text-blue-600 hover:text-blue-800">View Recipes →</a>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="text-3xl mb-4">✨</div>
+            <h3 class="text-xl font-semibold mb-2">Create Recipes</h3>
+            <p class="text-gray-600">Share your own culinary creations with the community</p>
+            {{if .User}}
+                <a href="/recipes/new" class="inline-block mt-4 text-blue-600 hover:text-blue-800">Create Recipe →</a>
+            {{else}}
+                <button onclick="showLoginModal()" class="inline-block mt-4 text-blue-600 hover:text-blue-800">Login to Create →</button>
+            {{end}}
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="text-3xl mb-4">🔍</div>
+            <h3 class="text-xl font-semibold mb-2">Search & Filter</h3>
+            <p class="text-gray-600">Find the perfect recipe with our advanced search features</p>
+            <a href="/recipes" class="inline-block mt-4 text-blue-600 hover:text-blue-800">Start Searching →</a>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Recipes Section -->
+<div class="mt-16">
+    <h2 class="text-2xl font-bold text-gray-900 mb-6">Recent Recipes</h2>
+    <div id="recent-recipes" hx-get="/api/recipes?limit=6" hx-trigger="load" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="text-center py-8 text-gray-500">Loading recent recipes...</div>
+    </div>
+</div>
+{{end}}
