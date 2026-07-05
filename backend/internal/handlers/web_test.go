@@ -11,14 +11,15 @@ import (
 )
 
 func TestWebHandler_getUserFromContext(t *testing.T) {
-	store := newFakeUserStore()
-	store.byID["u-chef"] = &models.User{
+	userStore := newFakeUserStore()
+	recipeStore := &fakeRecipeStore{}
+	userStore.byID["u-chef"] = &models.User{
 		ID:       "u-chef",
 		Email:    "chef@example.com",
 		Username: "chef",
 	}
 
-	h := NewWebHandler(store)
+	h := NewWebHandler(userStore, recipeStore)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	claims := &appmiddleware.Claims{UserID: "u-chef", Email: "chef@example.com"}
@@ -35,8 +36,9 @@ func TestWebHandler_getUserFromContext(t *testing.T) {
 }
 
 func TestWebHandler_getUserFromContext_MissingOrInvalid(t *testing.T) {
-	store := newFakeUserStore()
-	h := NewWebHandler(store)
+	userStore := newFakeUserStore()
+	recipeStore := &fakeRecipeStore{}
+	h := NewWebHandler(userStore, recipeStore)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	if got := h.getUserFromContext(req); got != nil {
@@ -52,7 +54,9 @@ func TestWebHandler_getUserFromContext_MissingOrInvalid(t *testing.T) {
 }
 
 func TestWebHandler_GuardsProtectedPagesWithoutSession(t *testing.T) {
-	h := NewWebHandler(newFakeUserStore())
+	userStore := newFakeUserStore()
+	recipeStore := &fakeRecipeStore{}
+	h := NewWebHandler(userStore, recipeStore)
 
 	tests := []struct {
 		name   string

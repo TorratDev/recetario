@@ -59,6 +59,10 @@ func (f *fakeRecipeStore) DeleteRecipe(id string) error {
 	return nil
 }
 
+func (f *fakeRecipeStore) SearchRecipes(filter *models.RecipeFilter, limit, offset int) ([]*models.Recipe, int, error) {
+	return f.recipes, len(f.recipes), nil
+}
+
 const testOwner = "owner1"
 
 func newTestStore() *fakeRecipeStore {

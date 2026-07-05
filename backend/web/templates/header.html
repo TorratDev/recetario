@@ -6,11 +6,20 @@
             Recipe<span>Book</span>
         </a>
 
+        <!-- Search bar -->
+        <div class="search-container">
+            <form id="search-form" method="GET" action="/recipes" class="search-form">
+                <input type="text" name="q" id="search-input" placeholder="Buscar recetas..." class="search-input" autocomplete="off">
+                <button type="submit" class="search-btn" aria-label="Buscar">🔍</button>
+            </form>
+        </div>
+
         <nav class="site-nav">
             <a href="/" class="nav-link">Inicio</a>
             <a href="/recipes" class="nav-link">Recetas</a>
             {{if .User}}
                 <a href="/recipes/new" class="btn-primary">+ Nueva receta</a>
+                <a href="/collections" class="nav-link">Mis colecciones</a>
                 <div class="user-menu">
                     <button class="user-menu-btn">
                         👤 {{.User.Username}} ▾

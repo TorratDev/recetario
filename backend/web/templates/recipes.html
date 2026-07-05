@@ -9,7 +9,7 @@
                 <label class="filter-label">Buscar</label>
                 <input type="text" id="searchInput" name="q"
                        placeholder="Nombre de la receta…"
-                       hx-get="/api/recipes"
+                       hx-get="/recipes/search"
                        hx-trigger="keyup changed delay:400ms"
                        hx-target="#recipe-grid"
                        hx-include="[name='cook_time'], [name='difficulty']"
@@ -19,7 +19,7 @@
             <div class="filter-group">
                 <label class="filter-label">Tiempo de cocción</label>
                 <select name="cook_time"
-                        hx-get="/api/recipes"
+                        hx-get="/recipes/search"
                         hx-trigger="change"
                         hx-target="#recipe-grid"
                         hx-include="#searchInput, [name='difficulty']"
@@ -34,7 +34,7 @@
             <div class="filter-group">
                 <label class="filter-label">Dificultad</label>
                 <select name="difficulty"
-                        hx-get="/api/recipes"
+                        hx-get="/recipes/search"
                         hx-trigger="change"
                         hx-target="#recipe-grid"
                         hx-include="#searchInput, [name='cook_time']"

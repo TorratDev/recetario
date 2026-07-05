@@ -72,6 +72,14 @@ func (s *smokeRecipeStore) DeleteRecipe(id string) error {
 	return nil
 }
 
+func (s *smokeRecipeStore) SearchRecipes(filter *models.RecipeFilter, limit, offset int) ([]*models.Recipe, int, error) {
+	recipes := make([]*models.Recipe, 0, len(s.byID))
+	for _, r := range s.byID {
+		recipes = append(recipes, r)
+	}
+	return recipes, len(recipes), nil
+}
+
 func TestAuthWebCookieSmokeFlow(t *testing.T) {
 	authService := appmiddleware.NewAuthService("smoke-secret")
 	userStore := newFakeUserStore()

@@ -23,6 +23,7 @@ type RecipeStore interface {
 	CreateRecipe(recipe *models.Recipe) error
 	UpdateRecipe(recipe *models.Recipe) error
 	DeleteRecipe(id string) error
+	SearchRecipes(filter *models.RecipeFilter, limit, offset int) ([]*models.Recipe, int, error)
 }
 
 type APIHandler struct {

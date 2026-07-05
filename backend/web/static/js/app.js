@@ -410,7 +410,7 @@ function refreshRecipeGrid() {
     };
 
     if (window.htmx) {
-        window.htmx.ajax('GET', '/api/recipes', {
+        window.htmx.ajax('GET', '/recipes/search', {
             target: '#recipe-grid',
             swap: 'innerHTML',
             values: query
@@ -419,7 +419,7 @@ function refreshRecipeGrid() {
     }
 
     const params = new URLSearchParams(query);
-    fetch(`/api/recipes?${params.toString()}`, { credentials: 'include' })
+    fetch(`/recipes/search?${params.toString()}`, { credentials: 'include' })
         .then((response) => response.text())
         .then((html) => {
             grid.innerHTML = html;

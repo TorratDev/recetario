@@ -1,0 +1,39 @@
+{{define "recipe-grid"}}
+{{if .Recipes}}
+    {{range .Recipes}}
+    <div class="recipe-card">
+        {{if .ImageURL}}
+            <img src="{{.ImageURL}}" alt="{{.Title}}" class="recipe-image">
+        {{else}}
+            <div class="recipe-image-placeholder">No image</div>
+        {{end}}
+        
+        <div class="recipe-content">
+            <a href="/recipes/{{.ID}}" class="recipe-title">{{.Title}}</a>
+            
+            {{if .Description}}
+            <p class="recipe-description">{{.Description}}</p>
+            {{end}}
+            
+            <div class="recipe-meta">
+                <span class="meta-item">⏱️ {{.CookTime}}min</span>
+                <span class="meta-item">👥 {{.Servings}}</span>
+                <span class="meta-item difficulty-{{.Difficulty}}">{{.Difficulty}}</span>
+            </div>
+
+            {{if .Tags}}
+            <div class="recipe-tags">
+                {{range .Tags}}
+                <span class="tag">{{.}}</span>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+{{else}}
+    <div style="grid-column:1/-1; text-align:center; padding:3rem; color: var(--ink-light);">
+        <p>No se encontraron recetas</p>
+    </div>
+{{end}}
+{{end}}

@@ -66,7 +66,7 @@ func main() {
 	r.Use(appmiddleware.SecurityHeaders)
 
 	// Initialize handlers
-	webHandler := handlers.NewWebHandler(userRepo)
+	webHandler := handlers.NewWebHandler(userRepo, recipeRepo)
 	apiHandler := handlers.NewAPIHandler(recipeRepo)
 	authHandler := handlers.NewAuthHandler(authService, userRepo)
 	userHandler := handlers.NewUserHandler(userRepo)
@@ -140,10 +140,12 @@ func main() {
 	r.With(authService.OptionalAuthMiddleware).Get("/", webHandler.HandleIndex)
 	r.Route("/recipes", func(r chi.Router) {
 		r.With(authService.OptionalAuthMiddleware).Get("/", webHandler.HandleRecipes)
+		r.With(authService.OptionalAuthMiddleware).Get("/search", webHandler.HandleRecipeSearch)
 		r.With(authService.OptionalAuthMiddleware).Get("/new", webHandler.HandleNewRecipe)
 		r.With(authService.OptionalAuthMiddleware).Get("/{id}", webHandler.HandleRecipeDetail)
 		r.With(authService.OptionalAuthMiddleware).Get("/{id}/edit", webHandler.HandleEditRecipe)
 	})
+	r.With(authService.OptionalAuthMiddleware).Get("/collections", webHandler.HandleCollections)
 
 	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
