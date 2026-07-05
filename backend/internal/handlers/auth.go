@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/mail"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -14,6 +17,46 @@ import (
 
 // tokenExpiresInSeconds mirrors the AuthService token expiry (24h) reported to clients.
 const tokenExpiresInSeconds = 86400
+
+func isUniqueUserConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "unique constraint failed: users.email") ||
+		strings.Contains(errMsg, "unique constraint failed: users.username")
+}
+
+func isValidEmailFormat(email string) bool {
+	addr, err := mail.ParseAddress(email)
+	return err == nil && addr.Address == email
+}
+
+func buildAuthCookie(r *http.Request, token string, maxAge int) *http.Cookie {
+	secure := false
+	if r.TLS != nil {
+		secure = true
+	}
+	if forwardedProto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); strings.EqualFold(forwardedProto, "https") {
+		secure = true
+	}
+
+	return &http.Cookie{
+		Name:     appmiddleware.AuthCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	}
+}
+
+func clearAuthCookie(r *http.Request) *http.Cookie {
+	cookie := buildAuthCookie(r, "", -1)
+	cookie.Expires = time.Unix(0, 0)
+	return cookie
+}
 
 // UserStore describes the user data-access methods the auth and user handlers
 // depend on. The concrete *repositories.UserRepository satisfies it; tests inject
@@ -82,38 +125,61 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		log.Info("Register failed: invalid request body", "error", err)
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_INVALID_BODY", "Invalid request payload", "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.")
 		return
 	}
 
-	req.Email = strings.TrimSpace(req.Email)
-	req.Username = strings.TrimSpace(req.Username)
-	if req.Email == "" || req.Username == "" || len(req.Password) < 8 {
-		http.Error(w, "email, username and password (min 8 chars) are required", http.StatusBadRequest)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
+	if req.Email == "" {
+		log.Info("Register failed: email required")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid registration data", "El email es obligatorio.")
+		return
+	}
+	if !isValidEmailFormat(req.Email) {
+		log.Info("Register failed: invalid email format")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid registration data", "El formato del email no es válido.")
+		return
+	}
+	if req.Username == "" {
+		log.Info("Register failed: username required")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid registration data", "El nombre de usuario es obligatorio.")
+		return
+	}
+	if req.Password == "" {
+		log.Info("Register failed: password required")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid registration data", "La contraseña es obligatoria.")
+		return
+	}
+	if len(req.Password) < 8 {
+		log.Info("Register failed: password too short")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid registration data", "La contraseña debe tener al menos 8 caracteres.")
 		return
 	}
 
 	emailTaken, err := h.users.EmailExists(req.Email)
 	if err != nil {
 		log.Error("Failed to check email existence", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		appmiddleware.WriteJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", "Ocurrió un error interno. Inténtalo más tarde.")
 		return
 	}
 	usernameTaken, err := h.users.UsernameExists(req.Username)
 	if err != nil {
 		log.Error("Failed to check username existence", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		appmiddleware.WriteJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", "Ocurrió un error interno. Inténtalo más tarde.")
 		return
 	}
 	if emailTaken || usernameTaken {
-		http.Error(w, "email or username already in use", http.StatusConflict)
+		log.Info("Register conflict: email or username already exists", "email", req.Email, "username", req.Username)
+		appmiddleware.WriteJSONError(w, http.StatusConflict, "USER_ALREADY_EXISTS", "Registration conflict", "El email o nombre de usuario ya está en uso.")
 		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Error("Password hashing failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		appmiddleware.WriteJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", "Ocurrió un error interno. Inténtalo más tarde.")
 		return
 	}
 
@@ -125,25 +191,33 @@ func (h *AuthHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		Password:  string(hash),
 	}
 	if err := h.users.CreateUser(user); err != nil {
+		if isUniqueUserConflict(err) {
+			log.Info("Register conflict: unique constraint", "email", req.Email, "username", req.Username, "error", err)
+			appmiddleware.WriteJSONError(w, http.StatusConflict, "USER_ALREADY_EXISTS", "Registration conflict", "El email o nombre de usuario ya está en uso.")
+			return
+		}
 		log.Error("Failed to create user", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		appmiddleware.WriteJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", "Ocurrió un error interno. Inténtalo más tarde.")
 		return
 	}
 
 	token, err := h.authService.GenerateToken(user.ID, user.Email, false)
 	if err != nil {
 		log.Error("Token generation failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		appmiddleware.WriteJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", "Ocurrió un error interno. Inténtalo más tarde.")
 		return
 	}
 
+	http.SetCookie(w, buildAuthCookie(r, token, tokenExpiresInSeconds))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(AuthResponse{
+	if err := json.NewEncoder(w).Encode(AuthResponse{
 		Token:     token,
 		User:      toPublicUser(user),
 		ExpiresIn: tokenExpiresInSeconds,
-	})
+	}); err != nil {
+		log.Error("Failed to encode register response", "error", fmt.Errorf("failed to encode register response: %w", err))
+	}
 }
 
 func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -151,12 +225,25 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		log.Info("Login failed: invalid request body", "error", err)
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_INVALID_BODY", "Invalid request payload", "No pudimos procesar la solicitud. Revisa los datos e inténtalo de nuevo.")
 		return
 	}
 
-	if req.Email == "" || req.Password == "" {
-		http.Error(w, "email and password required", http.StatusBadRequest)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Email == "" {
+		log.Info("Login failed: email required")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid login data", "El email es obligatorio.")
+		return
+	}
+	if !isValidEmailFormat(req.Email) {
+		log.Info("Login failed: invalid email format")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid login data", "El formato del email no es válido.")
+		return
+	}
+	if req.Password == "" {
+		log.Info("Login failed: password required")
+		appmiddleware.WriteJSONError(w, http.StatusBadRequest, "AUTH_VALIDATION_FAILED", "Invalid login data", "La contraseña es obligatoria.")
 		return
 	}
 
@@ -164,28 +251,48 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Do not reveal whether the email exists; log server-side only.
 		log.Info("Login failed: user lookup", "error", err)
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		appmiddleware.WriteJSONError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Authentication failed", "Credenciales inválidas.")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		log.Info("Login failed: invalid credentials")
+		appmiddleware.WriteJSONError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Authentication failed", "Credenciales inválidas.")
 		return
 	}
 
 	token, err := h.authService.GenerateToken(user.ID, user.Email, false)
 	if err != nil {
 		log.Error("Token generation failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		appmiddleware.WriteJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", "Ocurrió un error interno. Inténtalo más tarde.")
 		return
 	}
 
+	http.SetCookie(w, buildAuthCookie(r, token, tokenExpiresInSeconds))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AuthResponse{
+	if err := json.NewEncoder(w).Encode(AuthResponse{
 		Token:     token,
 		User:      toPublicUser(user),
 		ExpiresIn: tokenExpiresInSeconds,
-	})
+	}); err != nil {
+		log.Error("Failed to encode login response", "error", fmt.Errorf("failed to encode login response: %w", err))
+	}
+}
+
+func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
+	logger.FromContext(r.Context()).Info("User logout request")
+	http.SetCookie(w, clearAuthCookie(r))
+
+	if strings.Contains(strings.ToLower(r.Header.Get("Accept")), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"message": "Logout successful",
+		})
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
@@ -193,27 +300,27 @@ func (h *AuthHandler) HandleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		http.Error(w, "Authorization header required", http.StatusUnauthorized)
+		appmiddleware.WriteJSONError(w, http.StatusUnauthorized, "AUTH_HEADER_REQUIRED", "Authentication required", "Debes iniciar sesión para continuar.")
 		return
 	}
 
 	tokenParts := strings.Split(authHeader, " ")
 	if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-		http.Error(w, "Invalid authorization format", http.StatusUnauthorized)
+		appmiddleware.WriteJSONError(w, http.StatusUnauthorized, "INVALID_AUTH_FORMAT", "Invalid authorization format", "Tu sesión no es válida. Inicia sesión nuevamente.")
 		return
 	}
 
 	claims, err := h.authService.ValidateToken(tokenParts[1])
 	if err != nil {
 		log.Info("Token validation failed", "error", err)
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		appmiddleware.WriteJSONError(w, http.StatusUnauthorized, "INVALID_TOKEN", "Invalid token", "Tu sesión expiró o no es válida. Inicia sesión nuevamente.")
 		return
 	}
 
 	newToken, err := h.authService.GenerateToken(claims.UserID, claims.Email, claims.IsAdmin)
 	if err != nil {
 		log.Error("Token generation failed", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		appmiddleware.WriteJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", "Ocurrió un error interno. Inténtalo más tarde.")
 		return
 	}
 

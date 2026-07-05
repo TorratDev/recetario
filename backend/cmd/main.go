@@ -58,6 +58,7 @@ func main() {
 
 	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.Recoverer)
+	r.Use(appmiddleware.CanonicalLoopbackHost)
 	r.Use(appmiddleware.RequestLogger)
 	r.Use(appmiddleware.ErrorHandler)
 	r.Use(appmiddleware.CORS(appmiddleware.DefaultCORSConfig()))
@@ -65,7 +66,7 @@ func main() {
 	r.Use(appmiddleware.SecurityHeaders)
 
 	// Initialize handlers
-	webHandler := handlers.NewWebHandler()
+	webHandler := handlers.NewWebHandler(userRepo)
 	apiHandler := handlers.NewAPIHandler(recipeRepo)
 	authHandler := handlers.NewAuthHandler(authService, userRepo)
 	userHandler := handlers.NewUserHandler(userRepo)
@@ -76,12 +77,11 @@ func main() {
 	tagHandler := handlers.NewTagHandler(recipeRepo)
 
 	// Routes
-	r.Get("/", webHandler.HandleIndex)
-
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.HandleRegister)
 			r.Post("/login", authHandler.HandleLogin)
+			r.Post("/logout", authHandler.HandleLogout)
 			r.Post("/refresh", authHandler.HandleRefresh)
 		})
 
@@ -137,10 +137,12 @@ func main() {
 		})
 	})
 
+	r.With(authService.OptionalAuthMiddleware).Get("/", webHandler.HandleIndex)
 	r.Route("/recipes", func(r chi.Router) {
-		r.Get("/", webHandler.HandleRecipes)
-		r.With(authService.AuthMiddleware).Get("/new", webHandler.HandleNewRecipe)
-		r.Get("/{id}", webHandler.HandleRecipeDetail)
+		r.With(authService.OptionalAuthMiddleware).Get("/", webHandler.HandleRecipes)
+		r.With(authService.OptionalAuthMiddleware).Get("/new", webHandler.HandleNewRecipe)
+		r.With(authService.OptionalAuthMiddleware).Get("/{id}", webHandler.HandleRecipeDetail)
+		r.With(authService.OptionalAuthMiddleware).Get("/{id}/edit", webHandler.HandleEditRecipe)
 	})
 
 	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {

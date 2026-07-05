@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -61,7 +63,18 @@ const testOwner = "owner1"
 
 func newTestStore() *fakeRecipeStore {
 	recipes := []*models.Recipe{
-		{ID: "1", UserID: testOwner, Title: "Spaghetti Bolognese", Description: "Classic Italian pasta dish with rich meat sauce", CookTime: 30, Difficulty: "medium"},
+		{
+			ID:          "1",
+			UserID:      testOwner,
+			Title:       "Spaghetti Bolognese",
+			Description: "Classic Italian pasta dish with rich meat sauce",
+			CookTime:    30,
+			Difficulty:  "medium",
+			Ingredients: []models.Ingredient{{Amount: "2", Unit: "tazas", Name: "Harina"}},
+			Instructions: []models.Instruction{
+				{Text: "Mezclar ingredientes"},
+			},
+		},
 		{ID: "2", UserID: testOwner, Title: "Chicken Curry", Description: "Spicy and aromatic Indian curry with tender chicken", CookTime: 45, Difficulty: "hard"},
 		{ID: "3", UserID: testOwner, Title: "Caesar Salad", Description: "Fresh romaine lettuce with creamy Caesar dressing", CookTime: 15, Difficulty: "easy"},
 		{ID: "4", UserID: testOwner, Title: "Beef Tacos", Description: "Mexican-style tacos with seasoned ground beef", CookTime: 25, Difficulty: "medium"},
@@ -73,6 +86,20 @@ func newTestStore() *fakeRecipeStore {
 		byID[r.ID] = r
 	}
 	return &fakeRecipeStore{recipes: recipes, byID: byID}
+}
+
+func mustLoadDetailTemplate(t *testing.T) *template.Template {
+	t.Helper()
+
+	templates, err := template.ParseFiles(
+		filepath.Join("..", "..", "web", "templates", "recipe-cards.html"),
+		filepath.Join("..", "..", "web", "templates", "recipe-detail-content.html"),
+	)
+	if err != nil {
+		t.Fatalf("failed to parse templates for HTMX test: %v", err)
+	}
+
+	return templates
 }
 
 // withRecipeCtx attaches a chi route param ("id") and, when userID is non-empty,
@@ -93,6 +120,7 @@ func TestAPIHandler_GetRecipes(t *testing.T) {
 	tests := []struct {
 		name           string
 		method         string
+		userID         string
 		expectedStatus int
 		expectedBody   []map[string]interface{}
 	}{
@@ -101,12 +129,26 @@ func TestAPIHandler_GetRecipes(t *testing.T) {
 			method:         http.MethodGet,
 			expectedStatus: http.StatusOK,
 			expectedBody: []map[string]interface{}{
-				{"id": "1", "title": "Spaghetti Bolognese"},
-				{"id": "2", "title": "Chicken Curry"},
-				{"id": "3", "title": "Caesar Salad"},
-				{"id": "4", "title": "Beef Tacos"},
-				{"id": "5", "title": "Chocolate Cake"},
-				{"id": "6", "title": "Greek Salad"},
+				{"id": "1", "title": "Spaghetti Bolognese", "is_owner": false},
+				{"id": "2", "title": "Chicken Curry", "is_owner": false},
+				{"id": "3", "title": "Caesar Salad", "is_owner": false},
+				{"id": "4", "title": "Beef Tacos", "is_owner": false},
+				{"id": "5", "title": "Chocolate Cake", "is_owner": false},
+				{"id": "6", "title": "Greek Salad", "is_owner": false},
+			},
+		},
+		{
+			name:           "GET recipes marks owner when authenticated",
+			method:         http.MethodGet,
+			userID:         testOwner,
+			expectedStatus: http.StatusOK,
+			expectedBody: []map[string]interface{}{
+				{"id": "1", "title": "Spaghetti Bolognese", "is_owner": true},
+				{"id": "2", "title": "Chicken Curry", "is_owner": true},
+				{"id": "3", "title": "Caesar Salad", "is_owner": true},
+				{"id": "4", "title": "Beef Tacos", "is_owner": true},
+				{"id": "5", "title": "Chocolate Cake", "is_owner": true},
+				{"id": "6", "title": "Greek Salad", "is_owner": true},
 			},
 		},
 		{
@@ -120,11 +162,14 @@ func TestAPIHandler_GetRecipes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var body *strings.Reader
 			if tt.method == http.MethodPost {
-				body = strings.NewReader(`{"title":"New Recipe","cook_time":10,"difficulty":"easy"}`)
+				body = strings.NewReader(`{"title":"New Recipe","description":"Fresh and quick","cook_time":10,"difficulty":"easy"}`)
 			} else {
 				body = strings.NewReader("")
 			}
 			req := httptest.NewRequest(tt.method, "/api/recipes", body)
+			if tt.userID != "" {
+				req = req.WithContext(context.WithValue(req.Context(), appmiddleware.UserIDKey, tt.userID))
+			}
 			w := httptest.NewRecorder()
 
 			handler.HandleRecipes(w, req)
@@ -150,16 +195,70 @@ func TestAPIHandler_GetRecipes(t *testing.T) {
 					if response[i]["title"] != expected["title"] {
 						t.Errorf("Expected recipe title %s, got %s", expected["title"], response[i]["title"])
 					}
+					if response[i]["is_owner"] != expected["is_owner"] {
+						t.Errorf("Expected is_owner %v, got %v", expected["is_owner"], response[i]["is_owner"])
+					}
 				}
 			}
 		})
 	}
 }
 
+func TestAPIHandler_GetRecipes_HTMX_OwnerShowsEditAndDeleteInCards(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+	handler.templates = mustLoadDetailTemplate(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/recipes", nil)
+	req = req.WithContext(context.WithValue(req.Context(), appmiddleware.UserIDKey, testOwner))
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+
+	handler.HandleRecipes(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("expected text/html content type, got %q", got)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Ver receta") {
+		t.Fatalf("expected cards body to include recipe link, got: %s", body)
+	}
+	if !strings.Contains(body, "/recipes/1/edit") || !strings.Contains(body, "deleteRecipe('1', this)") {
+		t.Fatalf("expected owner edit/delete controls in cards, got: %s", body)
+	}
+}
+
+func TestAPIHandler_GetRecipes_HTMX_AuthenticatedNonOwnerHidesEditAndDeleteInCards(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+	handler.templates = mustLoadDetailTemplate(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/recipes", nil)
+	req = req.WithContext(context.WithValue(req.Context(), appmiddleware.UserIDKey, "intruder"))
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+
+	handler.HandleRecipes(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Ver receta") {
+		t.Fatalf("expected cards body to include recipe link, got: %s", body)
+	}
+	if strings.Contains(body, "/edit") || strings.Contains(body, "deleteRecipe(") {
+		t.Fatalf("expected owner edit/delete controls hidden in cards for non-owner, got: %s", body)
+	}
+}
+
 func TestAPIHandler_CreateRecipe(t *testing.T) {
 	handler := NewAPIHandler(newTestStore())
 
-	body := strings.NewReader(`{"title":"New Recipe","cook_time":10,"difficulty":"easy"}`)
+	body := strings.NewReader(`{"title":"New Recipe","description":"Fresh and quick","cook_time":10,"difficulty":"easy"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/recipes", body)
 	req = req.WithContext(context.WithValue(req.Context(), appmiddleware.UserIDKey, testOwner))
 	w := httptest.NewRecorder()
@@ -190,23 +289,37 @@ func TestAPIHandler_CreateRecipe_InvalidBody(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	handler.HandleCreateRecipe(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400 for invalid body, got %d", w.Code)
-	}
+	assertErrorContract(t, w, http.StatusBadRequest, "INVALID_JSON", "No pudimos procesar la receta. Revisa los datos e inténtalo de nuevo.")
 }
 
 func TestAPIHandler_CreateRecipe_InvalidRecipe(t *testing.T) {
 	handler := NewAPIHandler(newTestStore())
 
-	// Missing title fails models.Recipe.Validate().
-	req := httptest.NewRequest(http.MethodPost, "/api/recipes", strings.NewReader(`{"cook_time":10}`))
-	w := httptest.NewRecorder()
+	tests := []struct {
+		name     string
+		body     string
+		wantDesc string
+	}{
+		{
+			name:     "missing description",
+			body:     `{"title":"New Recipe","cook_time":10,"difficulty":"easy"}`,
+			wantDesc: "description is required",
+		},
+		{
+			name:     "missing description and title returns description first",
+			body:     `{"cook_time":10,"difficulty":"easy"}`,
+			wantDesc: "description is required",
+		},
+	}
 
-	handler.HandleCreateRecipe(w, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/recipes", strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400 for invalid recipe, got %d", w.Code)
+			handler.HandleCreateRecipe(w, req)
+			assertErrorContract(t, w, http.StatusBadRequest, "RECIPE_VALIDATION_FAILED", tt.wantDesc)
+		})
 	}
 }
 
@@ -245,15 +358,102 @@ func TestAPIHandler_GetRecipe_NotFound(t *testing.T) {
 
 	handler.HandleRecipe(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("Expected status 404 for missing recipe, got %d", w.Code)
+	assertErrorContract(t, w, http.StatusNotFound, "RECIPE_NOT_FOUND", "No encontramos la receta solicitada.")
+}
+
+func TestAPIHandler_GetRecipe_HTMX_OwnerShowsEditAndDelete(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+	handler.templates = mustLoadDetailTemplate(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/recipes/1", nil)
+	req = withRecipeCtx(req, "1", testOwner)
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+
+	handler.HandleRecipe(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("expected text/html content type, got %q", got)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Editar") || !strings.Contains(body, "Eliminar receta") {
+		t.Fatalf("expected owner actions in HTMX body, got: %s", body)
+	}
+	if strings.Contains(body, `"code":"INTERNAL_ERROR"`) {
+		t.Fatalf("unexpected error JSON leaked into HTMX body: %s", body)
+	}
+	if !strings.Contains(body, "Harina") || !strings.Contains(body, "Mezclar ingredientes") {
+		t.Fatalf("expected ingredient and instruction content in HTMX body, got: %s", body)
+	}
+}
+
+func TestAPIHandler_GetRecipe_HTMX_NonOwnerHidesEditAndDelete(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+	handler.templates = mustLoadDetailTemplate(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/recipes/1", nil)
+	req = withRecipeCtx(req, "1", "intruder")
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+
+	handler.HandleRecipe(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if strings.Contains(body, "Editar") || strings.Contains(body, "Eliminar receta") {
+		t.Fatalf("expected owner actions hidden for non-owner, got: %s", body)
+	}
+	if strings.Contains(body, `"code":"INTERNAL_ERROR"`) || strings.Contains(body, `"error":`) {
+		t.Fatalf("unexpected JSON error leaked into HTMX body: %s", body)
+	}
+}
+
+func TestAPIHandler_HandleRecipe_NonOwnerMutationForbidden(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+
+	tests := []struct {
+		name       string
+		method     string
+		body       string
+		wantDetail string
+	}{
+		{
+			name:       "PUT returns 403 for non-owner",
+			method:     http.MethodPut,
+			body:       `{"title":"Hijack","cook_time":20,"difficulty":"medium"}`,
+			wantDetail: "No tienes permisos para editar esta receta.",
+		},
+		{
+			name:       "DELETE returns 403 for non-owner",
+			method:     http.MethodDelete,
+			wantDetail: "No tienes permisos para eliminar esta receta.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, "/api/recipes/1", strings.NewReader(tt.body))
+			req = withRecipeCtx(req, "1", "intruder")
+			w := httptest.NewRecorder()
+
+			handler.HandleRecipe(w, req)
+
+			assertErrorContract(t, w, http.StatusForbidden, "FORBIDDEN", tt.wantDetail)
+		})
 	}
 }
 
 func TestAPIHandler_UpdateRecipe(t *testing.T) {
 	handler := NewAPIHandler(newTestStore())
 
-	body := `{"title":"Updated Title","cook_time":20,"difficulty":"medium"}`
+	body := `{"title":"Updated Title","description":"Updated description","cook_time":20,"difficulty":"medium"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/recipes/1", strings.NewReader(body))
 	req = withRecipeCtx(req, "1", testOwner)
 	w := httptest.NewRecorder()
@@ -285,10 +485,7 @@ func TestAPIHandler_UpdateRecipe_Forbidden(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	handler.HandleUpdateRecipe(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Expected status 403 for non-owner, got %d", w.Code)
-	}
+	assertErrorContract(t, w, http.StatusForbidden, "FORBIDDEN", "No tienes permisos para editar esta receta.")
 }
 
 func TestAPIHandler_UpdateRecipe_Unauthorized(t *testing.T) {
@@ -300,9 +497,51 @@ func TestAPIHandler_UpdateRecipe_Unauthorized(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	handler.HandleUpdateRecipe(w, req)
+	assertErrorContract(t, w, http.StatusUnauthorized, "UNAUTHORIZED", "Debes iniciar sesión para editar esta receta.")
+}
 
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("Expected status 401 without auth, got %d", w.Code)
+func TestAPIHandler_UpdateRecipe_InvalidBody(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+
+	req := httptest.NewRequest(http.MethodPut, "/api/recipes/1", strings.NewReader("not json"))
+	req = withRecipeCtx(req, "1", testOwner)
+	w := httptest.NewRecorder()
+
+	handler.HandleUpdateRecipe(w, req)
+
+	assertErrorContract(t, w, http.StatusBadRequest, "INVALID_JSON", "No pudimos procesar la receta. Revisa los datos e inténtalo de nuevo.")
+}
+
+func TestAPIHandler_UpdateRecipe_InvalidRecipe(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+
+	tests := []struct {
+		name     string
+		body     string
+		wantDesc string
+	}{
+		{
+			name:     "missing description",
+			body:     `{"title":"Updated Title","cook_time":20,"difficulty":"medium"}`,
+			wantDesc: "description is required",
+		},
+		{
+			name:     "missing description and title returns description first",
+			body:     `{"cook_time":20,"difficulty":"medium"}`,
+			wantDesc: "description is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPut, "/api/recipes/1", strings.NewReader(tt.body))
+			req = withRecipeCtx(req, "1", testOwner)
+			w := httptest.NewRecorder()
+
+			handler.HandleUpdateRecipe(w, req)
+
+			assertErrorContract(t, w, http.StatusBadRequest, "RECIPE_VALIDATION_FAILED", tt.wantDesc)
+		})
 	}
 }
 
@@ -347,10 +586,19 @@ func TestAPIHandler_DeleteRecipe_Forbidden(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	handler.HandleDeleteRecipe(w, req)
+	assertErrorContract(t, w, http.StatusForbidden, "FORBIDDEN", "No tienes permisos para eliminar esta receta.")
+}
 
-	if w.Code != http.StatusForbidden {
-		t.Errorf("Expected status 403 for non-owner, got %d", w.Code)
-	}
+func TestAPIHandler_DeleteRecipe_Unauthorized(t *testing.T) {
+	handler := NewAPIHandler(newTestStore())
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/recipes/1", nil)
+	req = withRecipeCtx(req, "1", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleDeleteRecipe(w, req)
+
+	assertErrorContract(t, w, http.StatusUnauthorized, "UNAUTHORIZED", "Debes iniciar sesión para eliminar esta receta.")
 }
 
 func TestAPIHandler_InvalidMethod(t *testing.T) {
