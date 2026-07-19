@@ -35,3 +35,7 @@ google-services.json
 
 # Local SQLite databases (runtime artifacts)
 *.db
+
+# Local environment overrides (secrets — see .env.example)
+.env
+backend/uploads/

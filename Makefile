@@ -1,4 +1,4 @@
-.PHONY: help build run test lint db-reset
+.PHONY: help build run test lint db-reset bench-search
 
 # Default target
 help:
@@ -10,6 +10,7 @@ help:
 	@echo "  make build        - Build the server binary"
 	@echo "  make test         - Run all tests"
 	@echo "  make lint         - Run Go linter"
+	@echo "  make bench-search - Benchmark the search repository (docs/search/BENCHMARKS.md)"
 	@echo ""
 	@echo "📊 Database (SQLite):"
 	@echo "  make db-reset     - Delete the local SQLite database (recreated on next run)"
@@ -32,6 +33,10 @@ test:
 lint:
 	@echo "🔍 Running linter..."
 	cd backend && golangci-lint run
+
+bench-search:
+	@echo "⏱️  Benchmarking search (see docs/search/BENCHMARKS.md)..."
+	cd backend && go test ./internal/repositories/... -run '^$$' -bench . -benchtime=1x -benchmem -timeout 300s
 
 # Database commands (SQLite)
 # The server creates and seeds backend/recipeapp.db automatically on startup via

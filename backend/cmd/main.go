@@ -22,7 +22,7 @@ func main() {
 	log := logger.New()
 
 	// Initialize SQLite database
-	dbPath := "recipeapp.db"
+	dbPath := getEnv("DB_PATH", "recipeapp.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Error("Failed to connect to SQLite database", "error", err)
@@ -75,6 +75,7 @@ func main() {
 	searchHandler := handlers.NewSearchHandler(recipeRepo)
 	ingredientHandler := handlers.NewIngredientHandler(recipeRepo)
 	tagHandler := handlers.NewTagHandler(recipeRepo)
+	healthHandler := handlers.NewHealthHandler(db)
 
 	// Routes
 	r.Route("/api", func(r chi.Router) {
@@ -147,6 +148,8 @@ func main() {
 	})
 	r.With(authService.OptionalAuthMiddleware).Get("/collections", webHandler.HandleCollections)
 
+	r.Get("/healthz", healthHandler.HandleHealth)
+
 	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -158,8 +161,9 @@ func main() {
 	fileServer := http.FileServer(http.Dir("web/static/"))
 	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 
-	log.Info("Server starting on :8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	addr := ":" + getEnv("PORT", "8080")
+	log.Info("Server starting", "addr", addr)
+	if err := http.ListenAndServe(addr, r); err != nil {
 		log.Error("Server failed to start", "error", err)
 		os.Exit(1)
 	}
@@ -170,6 +174,13 @@ func getJWTSecret() string {
 		return secret
 	}
 	return "dev-secret-change-in-production"
+}
+
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func createTables(db *sql.DB) error {

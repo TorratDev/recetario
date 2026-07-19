@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Recipe App</string>
+
+    <string name="login_title">Sign in</string>
+    <string name="login_email_label">Email</string>
+    <string name="login_password_label">Password</string>
+    <string name="login_submit">Sign in</string>
+    <string name="login_register_prompt">Don\'t have an account? Register</string>
+
+    <string name="register_title">Create account</string>
+    <string name="register_first_name_label">First name</string>
+    <string name="register_last_name_label">Last name</string>
+    <string name="register_username_label">Username</string>
+    <string name="register_submit">Create account</string>
+
+    <string name="recipes_title">Recipes</string>
+    <string name="recipes_new">New recipe</string>
+    <string name="recipes_empty">No recipes yet</string>
+
+    <string name="recipe_form_title_label">Title</string>
+    <string name="recipe_form_description_label">Description</string>
+    <string name="recipe_form_prep_time_label">Prep time (min)</string>
+    <string name="recipe_form_cook_time_label">Cook time (min)</string>
+    <string name="recipe_form_servings_label">Servings</string>
+    <string name="recipe_form_save">Save</string>
+
+    <string name="error_network_generic">Couldn\'t reach the server. Check your connection and try again.</string>
+    <string name="error_unauthorized">Your session expired. Please sign in again.</string>
+    <string name="action_retry">Retry</string>
+</resources>

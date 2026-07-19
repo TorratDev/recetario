@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Window-level theme only (status bar, window background) applied before
+        Compose renders. Actual Material3 theming/colors come from the
+        RecipeTheme composable (presentation/theme/Theme.kt) — this base theme
+        intentionally uses the platform's built-in style so no extra
+        Material Components/AppCompat XML-theme dependency is required.
+    -->
+    <style name="Theme.RecipeApp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@color/ic_launcher_background</item>
+    </style>
+</resources>

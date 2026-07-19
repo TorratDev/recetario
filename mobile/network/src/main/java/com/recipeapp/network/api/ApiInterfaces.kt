@@ -1,35 +1,54 @@
 package com.recipeapp.network.api
 
-import com.recipeapp.domain.model.*
-
-interface RecipeApi {
-    suspend fun getRecipes(filter: RecipeFilter): List<Recipe>
-    suspend fun getRecipe(id: Int): Recipe
-    suspend fun createRecipe(recipe: Recipe): Recipe
-    suspend fun updateRecipe(id: Int, recipe: Recipe): Recipe
-    suspend fun deleteRecipe(id: Int): Unit
-}
+import com.recipeapp.network.dto.AuthResponseDto
+import com.recipeapp.network.dto.CreateRecipeRequestDto
+import com.recipeapp.network.dto.LoginRequestDto
+import com.recipeapp.network.dto.RecipeDto
+import com.recipeapp.network.dto.RecipeSummaryDto
+import com.recipeapp.network.dto.RefreshResponseDto
+import com.recipeapp.network.dto.RegisterRequestDto
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.Path
+import retrofit2.http.POST
+import retrofit2.http.Query
 
 interface AuthApi {
-    suspend fun login(request: LoginRequest): AuthResponse
-    suspend fun register(request: RegisterRequest): AuthResponse
-    suspend fun refreshToken(): AuthResponse
-    suspend fun logout(): Unit
+    @POST("auth/login")
+    suspend fun login(@Body request: LoginRequestDto): AuthResponseDto
+
+    @POST("auth/register")
+    suspend fun register(@Body request: RegisterRequestDto): AuthResponseDto
+
+    /**
+     * No @Body — the backend re-signs a new token from the current, still-valid
+     * one passed via the Authorization header. AuthInterceptor already attaches
+     * the stored bearer token to every request, so no explicit header param is
+     * needed here either.
+     */
+    @POST("auth/refresh")
+    suspend fun refresh(): RefreshResponseDto
+
+    /**
+     * Requires Accept: application/json, or the backend responds with a 303
+     * redirect instead of JSON (browser/HTMX default behavior).
+     */
+    @POST("auth/logout")
+    suspend fun logout(@Header("Accept") accept: String = "application/json")
 }
 
-interface IngredientApi {
-    suspend fun getIngredients(): List<Ingredient>
-    suspend fun getIngredient(id: Int): Ingredient
-    suspend fun createIngredient(name: String, category: String?): Ingredient
-    suspend fun updateIngredient(id: Int, name: String, category: String?): Ingredient
-    suspend fun deleteIngredient(id: Int): Unit
-    suspend fun searchIngredients(query: String): List<Ingredient>
-}
+interface RecipeApi {
+    @GET("recipes/")
+    suspend fun getRecipes(
+        @Query("search") search: String? = null,
+        @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int = 0
+    ): List<RecipeSummaryDto>
 
-interface TagApi {
-    suspend fun getTags(): List<Tag>
-    suspend fun getTag(id: Int): Tag
-    suspend fun createTag(name: String, color: String?): Tag
-    suspend fun updateTag(id: Int, name: String, color: String?): Tag
-    suspend fun deleteTag(id: Int): Unit
+    @GET("recipes/{id}/")
+    suspend fun getRecipe(@Path("id") id: String): RecipeDto
+
+    @POST("recipes/")
+    suspend fun createRecipe(@Body request: CreateRecipeRequestDto): RecipeDto
 }

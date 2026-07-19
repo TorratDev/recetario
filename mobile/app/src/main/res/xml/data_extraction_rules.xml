@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!--
+            Exclude the encrypted auth-token store from cloud backup — a
+            restored token on a different device would be stale/invalid, and
+            EncryptedSharedPreferences keys are tied to the Android Keystore
+            of the originating device anyway.
+        -->
+        <exclude domain="sharedpref" path="recipeapp_secure_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="recipeapp_secure_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

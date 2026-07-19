@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.recipeapp.presentation.RecipeNavigation
+import com.recipeapp.presentation.theme.RecipeTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 

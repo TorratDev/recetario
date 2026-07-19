@@ -1,0 +1,962 @@
+openapi: 3.0.3
+info:
+  title: Recipe App API
+  description: >
+    JSON API for the Recipe App backend. Documents the real, currently-implemented
+    contract (issue #51) — not the aspirational schema in DEVELOPMENT_PLAN.md.
+    All endpoints are served under a flat, unversioned `/api` prefix; see
+    docs/api/VERSIONING.md for the plan to introduce `/api/v2` on the next
+    breaking change.
+  version: "1.0.0"
+servers:
+  - url: /api
+    description: Same-origin API prefix (no separate host/version segment today)
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
+tags:
+  - name: auth
+  - name: recipes
+  - name: ingredients
+  - name: tags
+  - name: search
+  - name: upload
+  - name: users
+  - name: collections
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Email or username already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Invalid email or password (single generic code, no user enumeration)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Log out and clear the server-side session cookie
+      description: >
+        Clients that want a JSON response MUST send `Accept: application/json`;
+        otherwise the server responds with a 303 redirect to `/` (browser/HTMX
+        behavior). Mobile/API clients should always send the header. There is
+        no server-side token blacklist — for Bearer-token clients, logout is
+        effectively "discard the locally stored token."
+      responses:
+        '200':
+          description: "Logged out (JSON, when Accept: application/json is sent)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "Logout successful" }
+        '303':
+          description: Redirect to / (browser/HTMX default, no Accept header sent)
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Re-sign a new JWT from the current, still-valid token
+      description: >
+        There is no separate long-lived refresh token — this endpoint accepts
+        the current JWT (must not yet be expired) via the Authorization header
+        only (the auth_token cookie is NOT accepted here, unlike other
+        endpoints) and returns a newly-signed token with a fresh expiry. If the
+        current token has already expired, this call also fails with 401 and
+        the client must force a full re-login.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: New token issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefreshResponse' }
+        '401':
+          description: Missing/malformed Authorization header, or invalid/expired token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /recipes/:
+    get:
+      tags: [recipes]
+      summary: List recipes
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+        - {}
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: difficulty, in: query, schema: { type: string, enum: [easy, medium, hard] } }
+        - { name: cook_time, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: >
+            Recipe summaries. Note: this list response includes fewer fields
+            than the single-recipe GET below (no prep_time/servings/
+            ingredients/instructions/tags) — documented as a distinct
+            RecipeSummary schema rather than silently unifying the two shapes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RecipeSummary' }
+    post:
+      tags: [recipes]
+      summary: Create a recipe
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipeInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /recipes/{id}/:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [recipes]
+      summary: Get a single recipe (full detail)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+        - {}
+      responses:
+        '200':
+          description: Recipe detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [recipes]
+      summary: Update a recipe (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipeInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recipe' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [recipes]
+      summary: Delete a recipe (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /recipes/{id}/ingredients:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [ingredients]
+      summary: List a recipe's ingredients
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+        - {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Ingredient' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [ingredients]
+      summary: Add an ingredient to a recipe (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IngredientInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ingredient' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/ingredients/order:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [ingredients]
+      summary: Reorder a recipe's ingredients (owner only)
+      description: >
+        The body must contain exactly the current set of ingredient IDs for
+        this recipe (same set, new order) — a partial or mismatched set is
+        rejected with 400.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ingredient_ids]
+              properties:
+                ingredient_ids:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: New order applied
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Ingredient' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/ingredients/{ingredientID}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: ingredientID, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [ingredients]
+      summary: Update an ingredient (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IngredientInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ingredient' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [ingredients]
+      summary: Delete an ingredient (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/tags:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [tags]
+      summary: List a recipe's tags
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+        - {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { type: string } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [tags]
+      summary: Add one or more tags to a recipe (owner only, idempotent)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tag: { type: string, description: "Single tag (either this or `tags`)" }
+                tags: { type: array, items: { type: string }, description: "Multiple tags (merged with `tag` if both present)" }
+      responses:
+        '201':
+          description: Full updated tag list for the recipe
+          content:
+            application/json:
+              schema: { type: array, items: { type: string } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /recipes/{id}/tags/{tag}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: tag, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [tags]
+      summary: Remove a tag from a recipe (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tags:
+    get:
+      tags: [tags]
+      summary: Global tag catalog across all recipes
+      security: []
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { type: string } }
+
+  /search:
+    get:
+      tags: [search]
+      summary: Search and filter recipes
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+        - {}
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: cuisine, in: query, schema: { type: string } }
+        - { name: difficulty, in: query, schema: { type: string, enum: [easy, medium, hard] } }
+        - { name: tags, in: query, schema: { type: array, items: { type: string } }, style: form, explode: false, description: "Comma-separated or repeated" }
+        - { name: min_prep_time, in: query, schema: { type: integer } }
+        - { name: max_prep_time, in: query, schema: { type: integer } }
+        - { name: min_cook_time, in: query, schema: { type: integer } }
+        - { name: max_cook_time, in: query, schema: { type: integer } }
+        - { name: min_servings, in: query, schema: { type: integer } }
+        - { name: max_servings, in: query, schema: { type: integer } }
+        - { name: sort_by, in: query, schema: { type: string, enum: [created_at, title, prep_time, cook_time, servings] } }
+        - { name: sort_order, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /search/suggestions:
+    get:
+      tags: [search]
+      summary: Title autocomplete suggestions
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 10 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions: { type: array, items: { type: string } }
+
+  /search/tags/popular:
+    get:
+      tags: [search]
+      summary: Most-used tags
+      security: []
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 10 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TagCount' }
+
+  /upload:
+    post:
+      tags: [upload]
+      summary: Upload a single image
+      description: "Multipart form field `file`. Max 10MB. Allowed types: image/jpeg, image/png, image/gif, image/webp."
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  filename: { type: string }
+                  url: { type: string }
+                  size: { type: integer }
+                  content_type: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /upload/multiple:
+    post:
+      tags: [upload]
+      summary: Upload up to 5 images
+      description: "Multipart form, up to 5 files, max 50MB total. Disallowed content types are silently skipped."
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  count: { type: integer }
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field_name: { type: string }
+                        filename: { type: string }
+                        original_name: { type: string }
+                        url: { type: string }
+                        size: { type: integer }
+                        content_type: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /upload/{filename}:
+    parameters:
+      - { name: filename, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [upload]
+      summary: Delete an uploaded file
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "File deleted successfully" }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/profile:
+    get:
+      tags: [users]
+      summary: Get the authenticated user's profile
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [users]
+      summary: Update the authenticated user's profile
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileUpdateRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /collections/:
+    get:
+      tags: [collections]
+      summary: List the authenticated user's collections
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: OK (always an array, never null)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RecipeCollection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [collections]
+      summary: Create a collection
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CollectionInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeCollection' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /collections/{id}/:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [collections]
+      summary: Get a collection
+      description: "Visible if the requester owns it OR it is public; otherwise 404 (never 403 — avoids leaking existence)."
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeCollection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [collections]
+      summary: Update a collection (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CollectionInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecipeCollection' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [collections]
+      summary: Delete a collection (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /collections/{id}/recipes:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [collections]
+      summary: Add a recipe to a collection (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipe_id]
+              properties:
+                recipe_id: { type: string }
+      responses:
+        '204': { description: Added }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /collections/{id}/recipes/{recipeID}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: recipeID, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [collections]
+      summary: Remove a recipe from a collection (owner only)
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Authorization: Bearer <token>. Checked before the cookie, so API/mobile clients never need to manage cookies."
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: "HttpOnly cookie set by the web (HTMX) login flow. Ignored if a Bearer header is present."
+
+  responses:
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Authenticated but not the resource owner
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Resource does not exist (or is hidden for privacy, e.g. private collections)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: >
+        Single shared error envelope for every 4xx/5xx response in the API.
+        Populated via one of two code paths in the backend: handlers that call
+        WriteJSONError directly produce "rich" `code` values (e.g.
+        RECIPE_NOT_FOUND, AUTH_VALIDATION_FAILED, USER_ALREADY_EXISTS,
+        INVALID_CREDENTIALS); handlers that call plain http.Error get their
+        response rewritten by the ErrorHandler middleware into generic codes
+        (BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED,
+        RATE_LIMIT_EXCEEDED, INTERNAL_ERROR, BAD_GATEWAY, SERVICE_UNAVAILABLE).
+        Which one you get depends on which handler served the request — see
+        docs/api/VERSIONING.md for the plan to reconcile this.
+      properties:
+        error: { type: string, description: "http.StatusText(code), e.g. \"Not Found\"" }
+        message: { type: string }
+        code: { type: string }
+        description: { type: string, description: "Spanish user-facing description" }
+        user_message: { type: string, description: "Duplicate of description" }
+
+    RegisterRequest:
+      type: object
+      required: [email, username, password, first_name, last_name]
+      properties:
+        email: { type: string, format: email }
+        username: { type: string }
+        password: { type: string, minLength: 8 }
+        first_name: { type: string }
+        last_name: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+        expires_in: { type: integer, format: int64, example: 86400, description: "Seconds until expiry" }
+
+    RefreshResponse:
+      type: object
+      description: "Note: unlike AuthResponse, no `user` object is returned from refresh."
+      properties:
+        token: { type: string }
+        expires_in: { type: integer, format: int64, example: 86400 }
+
+    User:
+      type: object
+      description: >
+        Public user DTO returned by auth/profile endpoints. Note: currently
+        omits avatar_url even though it exists on the underlying model and is
+        settable via PUT /users/profile — a known gap, documented here rather
+        than silently patched.
+      properties:
+        id: { type: string }
+        email: { type: string }
+        username: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        first_name: { type: string }
+        last_name: { type: string }
+        avatar_url: { type: string }
+
+    Ingredient:
+      type: object
+      properties:
+        id: { type: string }
+        recipe_id: { type: string }
+        name: { type: string }
+        amount: { type: string, description: "Free-text amount, e.g. \"2\", \"1/2\" — not a numeric type" }
+        unit: { type: string }
+        notes: { type: string }
+        position: { type: integer }
+
+    IngredientInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        amount: { type: string }
+        unit: { type: string }
+        notes: { type: string }
+
+    Instruction:
+      type: object
+      properties:
+        id: { type: string }
+        recipe_id: { type: string }
+        text: { type: string }
+        position: { type: integer }
+        duration: { type: integer, description: "Optional, minutes" }
+        temperature: { type: integer, description: "Optional, F or C (unit not distinguished by the API)" }
+
+    RecipeSummary:
+      type: object
+      description: "Shape returned by GET /recipes/ (list) — a subset of the full Recipe fields."
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        is_owner: { type: boolean }
+        title: { type: string }
+        description: { type: string }
+        cook_time: { type: integer }
+        difficulty: { type: string, enum: [easy, medium, hard, ""] }
+        category: { type: string }
+        cuisine: { type: string }
+        image_url: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Recipe:
+      type: object
+      description: "Shape returned by GET /recipes/{id}/ (detail) and by create/update."
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        is_owner: { type: boolean }
+        title: { type: string }
+        description: { type: string }
+        prep_time: { type: integer, description: minutes }
+        cook_time: { type: integer, description: minutes }
+        servings: { type: integer }
+        difficulty: { type: string, enum: [easy, medium, hard, ""] }
+        category: { type: string }
+        cuisine: { type: string }
+        image_url: { type: string }
+        ingredients:
+          type: array
+          items: { $ref: '#/components/schemas/Ingredient' }
+        instructions:
+          type: array
+          items: { $ref: '#/components/schemas/Instruction' }
+        tags:
+          type: array
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    RecipeInput:
+      type: object
+      required: [title, description]
+      description: "Body for POST/PUT /recipes/. Server overwrites user_id (create) and preserves id/user_id (update) from the auth context — never trust a client-supplied user_id."
+      properties:
+        title: { type: string }
+        description: { type: string }
+        prep_time: { type: integer, minimum: 0 }
+        cook_time: { type: integer, minimum: 0 }
+        servings: { type: integer, minimum: 0 }
+        difficulty: { type: string, enum: [easy, medium, hard, ""] }
+        category: { type: string }
+        cuisine: { type: string }
+        image_url: { type: string }
+
+    SearchResult:
+      type: object
+      properties:
+        recipes:
+          type: array
+          items: { $ref: '#/components/schemas/Recipe' }
+        total: { type: integer }
+        page: { type: integer }
+        per_page: { type: integer }
+
+    TagCount:
+      type: object
+      properties:
+        tag: { type: string }
+        count: { type: integer }
+
+    RecipeCollection:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        recipe_ids: { type: array, items: { type: string } }
+        is_public: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CollectionInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 100 }
+        description: { type: string }
+        is_public: { type: boolean }

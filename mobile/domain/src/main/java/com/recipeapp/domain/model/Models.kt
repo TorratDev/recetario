@@ -1,112 +1,102 @@
 package com.recipeapp.domain.model
 
-import kotlinx.datetime.LocalDateTime
-
-data class Recipe(
-    val id: Int,
-    val userId: Int,
-    val title: String,
-    val description: String?,
-    val instructions: String,
-    val prepTime: Int?,
-    val cookTime: Int?,
-    val servings: Int,
-    val difficulty: Difficulty,
-    val imageUrl: String?,
-    val isPublic: Boolean,
-    val createdAt: LocalDateTime,
-    val updatedAt: LocalDateTime,
-    val ingredients: List<RecipeIngredient> = emptyList(),
-    val tags: List<Tag> = emptyList(),
-    val categories: List<Category> = emptyList(),
-    val user: User? = null
-)
-
-data class RecipeIngredient(
-    val id: Int,
-    val recipeId: Int,
-    val ingredientId: Int,
-    val quantity: Double?,
-    val unit: String?,
-    val notes: String?,
-    val ingredient: Ingredient? = null
-)
-
-data class Ingredient(
-    val id: Int,
-    val name: String,
-    val category: String?,
-    val createdAt: LocalDateTime
-)
-
-data class Tag(
-    val id: Int,
-    val name: String,
-    val color: String,
-    val createdAt: LocalDateTime
-)
-
-data class Category(
-    val id: Int,
-    val userId: Int,
-    val name: String,
-    val parentId: Int?,
-    val createdAt: LocalDateTime
-)
+/**
+ * Domain models mirroring the real backend contract (backend/internal/models,
+ * backend/api/openapi.yaml) — string/UUID ids, flat [tags], a separate ordered
+ * [instructions] list, and RFC3339 timestamps kept as String (the backend
+ * serializes Go time.Time as RFC3339; parsing to a richer date type is left to
+ * the presentation layer if/when needed, so no kotlinx-datetime dependency is
+ * required here).
+ */
 
 data class User(
-    val id: Int,
+    val id: String,
     val email: String,
-    val name: String,
-    val isAdmin: Boolean,
-    val createdAt: LocalDateTime,
-    val updatedAt: LocalDateTime
+    val username: String,
+    val firstName: String,
+    val lastName: String,
+    val avatarUrl: String? = null
 )
 
-data class RecipeFilter(
-    val userId: Int? = null,
-    val title: String? = null,
-    val difficulty: Difficulty? = null,
-    val tags: List<String> = emptyList(),
-    val isPublic: Boolean? = null,
-    val limit: Int? = null,
-    val offset: Int? = null,
-    val sortBy: String = "created_at",
-    val sortOrder: String = "DESC"
-)
-
-enum class Difficulty {
-    EASY, MEDIUM, HARD
-}
-
-data class AuthResponse(
+data class AuthSession(
     val token: String,
     val user: User,
-    val expiresIn: Int
+    val expiresIn: Long
 )
 
-data class LoginRequest(
+data class LoginCredentials(
     val email: String,
     val password: String
 )
 
-data class RegisterRequest(
+data class RegisterDetails(
     val email: String,
+    val username: String,
     val password: String,
-    val name: String
+    val firstName: String,
+    val lastName: String
 )
 
-data class ApiResponse<T>(
-    val message: String,
-    val data: T? = null,
-    val error: String? = null
+data class RecipeIngredient(
+    val id: String,
+    val name: String,
+    val amount: String,
+    val unit: String,
+    val notes: String,
+    val position: Int
 )
 
-data class PaginatedResponse<T>(
-    val items: List<T>,
-    val totalCount: Int,
-    val currentPage: Int,
-    val pageSize: Int,
-    val hasNextPage: Boolean,
-    val hasPreviousPage: Boolean
+data class RecipeInstruction(
+    val id: String,
+    val text: String,
+    val position: Int,
+    val durationMinutes: Int? = null,
+    val temperature: Int? = null
+)
+
+data class Recipe(
+    val id: String,
+    val userId: String,
+    val isOwner: Boolean,
+    val title: String,
+    val description: String,
+    val prepTime: Int,
+    val cookTime: Int,
+    val servings: Int,
+    val difficulty: String,
+    val category: String,
+    val cuisine: String,
+    val imageUrl: String?,
+    val ingredients: List<RecipeIngredient> = emptyList(),
+    val instructions: List<RecipeInstruction> = emptyList(),
+    val tags: List<String> = emptyList(),
+    val createdAt: String,
+    val updatedAt: String
+)
+
+/** Narrower shape returned by the recipe list endpoint (GET /recipes/). */
+data class RecipeSummary(
+    val id: String,
+    val userId: String,
+    val isOwner: Boolean,
+    val title: String,
+    val description: String,
+    val cookTime: Int,
+    val difficulty: String,
+    val category: String,
+    val cuisine: String,
+    val imageUrl: String?,
+    val createdAt: String
+)
+
+data class NewRecipe(
+    val title: String,
+    val description: String,
+    val prepTime: Int = 0,
+    val cookTime: Int = 0,
+    val servings: Int = 0,
+    val difficulty: String = "",
+    val category: String = "",
+    val cuisine: String = "",
+    val imageUrl: String = ""
 )
